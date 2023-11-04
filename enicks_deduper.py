@@ -55,7 +55,7 @@ def adjust_5_position (line: list) -> str:
         Lclip = CIGAR[0:4]
         if "S" in Lclip:  #only left-handed soft clipping
             math = re.search("^[0-9]+", Lclip)
-            math = int(math.group(0))           #idk what this group error is?
+            math = int(math.group(0))          
             f_adjusted = int(unadjusted) - math 
     elif bit == "rev":                                                
         if CIGAR.endswith("S"):    #only right-handed soft clipping
