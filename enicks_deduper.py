@@ -30,17 +30,17 @@ def Umi_list (filein: str) -> set[str]:
     return UMIs
 
 def bitwise_strand (flag: str) -> str:
-    '''This will parse the stripped and split line of a SAM file for its bitwise flag and decode it to determine strandedness.
-    True is Reverse, False is Forward'''
+    '''This will parse the bitwise flag of a read in SAM file for its bitwise flag and decode it to determine strandedness.
+    Strip and split a readline and pass this function the 3rd position of the list for the bitwise flag'''
     if ((int(flag) & 16) == 16): 
-        rev = "+"
+        rev = "rev"
     else:
-        rev = "-"
+        rev = "forward"
 
     return rev     
 
 def adjust_5_position (line: list) -> str:
-    '''This function will take in the current readline of a SAM file, take out the reported 5-prime, 
+    '''This function will take in the current readline (stripped and split) of a SAM file, take out the reported 5-prime, 
     left most mapping position, parse the CIGAR string, and output a variable that is the adjusted 
     position based off any relevant CIGAR information'''
     unadjusted = line[3]
@@ -51,13 +51,13 @@ def adjust_5_position (line: list) -> str:
     rmath = 0
     dmath = 0
     nmath = 0
-    if bit == "+":
+    if bit == "forward":
         Lclip = CIGAR[0:4]
         if "S" in Lclip:  #only left-handed soft clipping
             math = re.search("^[0-9]+", Lclip)
             math = int(math.group(0))           #idk what this group error is?
             f_adjusted = int(unadjusted) - math 
-    elif bit == "-":                                                
+    elif bit == "rev":                                                
         if CIGAR.endswith("S"):    #only right-handed soft clipping
             rmath = re.search("[0-9]+(?=S$)", CIGAR)
             rmath = int(rmath.group(0))
@@ -71,19 +71,19 @@ def adjust_5_position (line: list) -> str:
             nmath = sum(nmath)
     r_adjusted = rmath + dmath + nmath + int(unadjusted) -1
     
-    return str(f_adjusted) if bit == "+" else str(r_adjusted)
+    return str(f_adjusted) if bit == "forward" else str(r_adjusted)
 
         
 
-out = open(outfile, "w")
-dupe = open(dupe, "w")
-file = open(filename, "r")
-err = open(erunk, "w")
+out = open(outfile, "w")    #open file to write unique reads 
+dupe = open(dupe, "w")      #open file to write duplicates
+file = open(filename, "r")  #open input sorted, sam file
+err = open(erunk, "w")      #open file to write unknown umi reads or error umi reads
 
-my_UMIs = Umi_list(umi)
+my_UMIs = Umi_list(umi)     #populate set of all known reads
 
 compare_reads={}    #dictionary for comparing reads where {key = list[UMI, strand, adjusted 5' position], value = count of duplicates}
-header=""
+header=""           #initialize header variable, so you can call line after all headers have been read and not skip first line
 for header in file:         
     if header.startswith("@"):             #write out the headers
         out.write(header)
@@ -94,69 +94,62 @@ line_2_write = header #grab first read line from last line taken from header loo
 line = line_2_write.strip().split()
 current_chrom = line[2]                 #assign chromosome for line comparisons, to know when to start over with empty dictionary
 split_header = line[0].split(":")
-current_read_umi = split_header[7]
+current_read_umi = split_header[7]      #assign umi of current read
 if current_read_umi in my_UMIs:
-    out.write(line_2_write)    
-    read_strand = bitwise_strand(line[1])
-    start_pos = adjust_5_position(line)
-    compare_list= current_read_umi + read_strand + start_pos
-    compare_reads[compare_list]= 0
+    out.write(line_2_write)             #write out first read line to unique as it is the first so not a duplicate
+    read_strand = bitwise_strand(line[1])       #assign strandedness
+    start_pos = adjust_5_position(line)         #adujst start position
+    compare_list= current_read_umi + read_strand + start_pos    #create string of comparison values for dictionary
+    compare_reads[compare_list]= 0                              #assign values for line comparison of first read line to dictionary
 else:
-    err.write(line_2_write)
-# counter = 1     #just for testing
-while True:                             #I think the very first read line is getting skipped
-    # counter +=1     #just to test
-    compare_2_write = file.readline()
-    compare = compare_2_write.strip().split()
-    if compare_2_write == "": 
-        # print("oopsie", f'{counter=}')         #testing, so this shows to be breaking early
+    err.write(line_2_write)         #else, this is not a known umi
+
+while True:                             #Begin loop for comparisons to find duplicates
+    compare_2_write = file.readline()   #next readline is saved to write 
+    compare = compare_2_write.strip().split()   
+    if compare_2_write == "":                   #should only break if end of file
         break
-    elif compare[2] != current_chrom:
-        compare_reads={}
-        out.write(compare_2_write)
+    elif compare[2] != current_chrom:           #if new chromosome, begin over with line comparisons 
+        compare_reads={}                        #empty dictionary as duplicates can not share chromosome
+        out.write(compare_2_write)              #write out last line of previous chromosome as not a duplicate
         compare_split_header_umi = compare[0].split(":")
-        compare_read_umi = compare_split_header_umi[7]
-        strand = bitwise_strand(compare[1])
-        five_start = adjust_5_position(compare)
-        comparison = compare_read_umi + strand + five_start
-        compare_reads[comparison] = 0
-        line_2_write = file.readline()
+        compare_read_umi = compare_split_header_umi[7]  #assign umi
+        strand = bitwise_strand(compare[1])             #assign strandedness
+        five_start = adjust_5_position(compare)         #assign adjusted position
+        comparison = compare_read_umi + strand + five_start     #set variable to compare these values
+        compare_reads[comparison] = 0                   #add variable to dictionary as unique
+        line_2_write = file.readline()                  #this is where you grab the first line of next chromosome 
         line = line_2_write.strip().split()
-        current_chrom = line[2]     #assign chromosome for line comparisons, to know when to start over with empty dictionary
+        current_chrom = line[2]     #assign new chromosome for line comparisons
         split_header = line[0].split(":")
-        current_read_umi = split_header[7]
-        if current_read_umi in my_UMIs:
-            # print("line 122, new first line", f'{counter=}')    #testing
-            out.write(line_2_write)    
-            read_strand = bitwise_strand(line[1])
-            start_pos = adjust_5_position(line)
-            compare_list=current_read_umi + read_strand + start_pos
-            compare_reads[compare_list]= 0
+        current_read_umi = split_header[7]      #assign umi for next line
+        if current_read_umi in my_UMIs:         #check if umi is known
+            out.write(line_2_write)             #write out as first line should not be duplicate
+            read_strand = bitwise_strand(line[1])   #assign strandedness
+            start_pos = adjust_5_position(line)     #assign adjusted position
+            compare_list=current_read_umi + read_strand + start_pos #combine as values to add to comparison dictionary
+            compare_reads[compare_list]= 0          #assign variable to dictionary
         else:
-            # print("line 129, unknown", f'{counter=}')   #testing
-            err.write(line_2_write)    
+            err.write(line_2_write)                 #if not known, write to error-unknown file
     else:       #new line chromosome = current_chrom
         compare_split_header_umi = compare[0].split(":")
-        compare_read_umi = compare_split_header_umi[7]
-        if compare_read_umi in my_UMIs:
-            strand = bitwise_strand(compare[1])
-            five_start = adjust_5_position(compare)
-            comparison = compare_read_umi + strand + five_start
-            if comparison in compare_reads:
-                # print("line 129, dupe", f'{counter=}')   #testing
-                dupe.write(compare_2_write)
-                compare_reads[comparison]+= 1
+        compare_read_umi = compare_split_header_umi[7]  #assign umi
+        if compare_read_umi in my_UMIs:                 #check if umi is known
+            strand = bitwise_strand(compare[1])         #assign strandedness
+            five_start = adjust_5_position(compare)     #assign adjusted position
+            comparison = compare_read_umi + strand + five_start     #combine values as variable to add to comparison dictionary
+            if comparison in compare_reads:             #check if variable already in comparions dictionary
+                dupe.write(compare_2_write)             #if so, write out to duplicate file
+                compare_reads[comparison]+= 1           #count up number of duplicates
             else:
-                # print("line142, unique", f'{counter=}') #testing
-                out.write(compare_2_write)
-                compare_reads[comparison] = 0
+                out.write(compare_2_write)              #if not already in dictionary, write out line to unique sam file
+                compare_reads[comparison] = 0           #add to comparison dictionary to find duplicates
         else:
-            # print("line 149, unknown", f'{counter=}')   #testing
-            err.write(compare_2_write)
+            err.write(compare_2_write)                  #if not known umi, write to error-unknown file
     
 
 
 out.close()
 dupe.close()
 file.close()
-err.close()
+err.close()         #close files :)
