@@ -58,6 +58,8 @@ def adjust_5_position (line: list) -> str:
             math = re.search("^[0-9]+", Lclip)
             math = int(math.group(0))          
             f_adjusted = int(unadjusted) - math 
+        else:
+            f_adjusted = int(unadjusted)
     elif bit == "rev":                                                
         if CIGAR.endswith("S"):    #only right-handed soft clipping
             rmath = re.search("[0-9]+(?=S$)", CIGAR)
@@ -131,18 +133,18 @@ while True:                             #Begin loop for comparisons to find dupl
             split_header = line[0].split(":")
             current_read_umi = split_header[7]      #assign umi for next line
             if current_read_umi in my_UMIs:
-                strand = bitwise_strand(line[1])
+                strand = bitwise_strand(line[1])    
                 five_start = adjust_5_position(line)
-                comparison = current_read_umi + strand + five_start
-                if comparison in compare_reads:
+                comparison = current_read_umi + strand + five_start     #add three comparison values to variable
+                if comparison in compare_reads:     #if in reads, write to duplicate file
                     dupe.write(line_2_write)
                     compare_reads[comparison]+=1
                 else:
-                    out.write(line_2_write)
+                    out.write(line_2_write)         #otherwise write out as unique
                     compare_reads[comparison]=0
             else:
                 err.write(line_2_write)
-        else: # current_chrom != line[2]: #this line is new chromosome first line, so add to dictionary three values = 0 and move on   #so we want to write it out
+        else: # current_chrom != line[2]: this line is new chromosome first line, so add to dictionary three values = 0 and write out
             current_chrom = line[2]
             compare_reads={}
             split_header = line[0].split(":")

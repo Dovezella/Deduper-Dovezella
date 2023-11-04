@@ -27,4 +27,7 @@ Starting on the first read line:
 48: write to dupe (dupe of 47)
 49: unique write out (Reverse, left soft clip)
 50: unique write out (insertion)
-51: dupe of line 50 after adjust_pos (deletion), write dupe
+51: unique write out (deletion)
+
+These unit tests do not contain all possibilites, and can be updated to reflect further situations for testing.
+At this time the code has been tested to be working even considering other possibilities.
