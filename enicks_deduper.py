@@ -51,6 +51,7 @@ def adjust_5_position (line: list) -> str:
     rmath = 0
     dmath = 0
     nmath = 0
+    mathm = 0
     if bit == "forward":
         Lclip = CIGAR[0:4]
         if "S" in Lclip:  #only left-handed soft clipping
@@ -69,7 +70,11 @@ def adjust_5_position (line: list) -> str:
             nmath = re.findall("[0-9]+(?=N)", CIGAR)
             nmath = list(map(int, nmath))
             nmath = sum(nmath)
-    r_adjusted = rmath + dmath + nmath + int(unadjusted) -1
+        if "M" in CIGAR:
+            mathm = re.findall("[0-9]+(?=M)", CIGAR)
+            mathm = list(map(int, mathm))
+            mathm = sum(mathm)
+    r_adjusted = rmath + dmath + nmath + mathm + int(unadjusted) -1
     
     return str(f_adjusted) if bit == "forward" else str(r_adjusted)
 
@@ -110,6 +115,7 @@ while True:                             #Begin loop for comparisons to find dupl
     if compare_2_write == "":                   #should only break if end of file
         break
     elif compare[2] != current_chrom:           #if new chromosome, begin over with line comparisons 
+        current_chrom = compare[2]     #assign new chromosome for line comparisons
         compare_reads={}                        #empty dictionary as duplicates can not share chromosome
         out.write(compare_2_write)              #write out last line of previous chromosome as not a duplicate
         compare_split_header_umi = compare[0].split(":")
@@ -118,19 +124,37 @@ while True:                             #Begin loop for comparisons to find dupl
         five_start = adjust_5_position(compare)         #assign adjusted position
         comparison = compare_read_umi + strand + five_start     #set variable to compare these values
         compare_reads[comparison] = 0                   #add variable to dictionary as unique
-        line_2_write = file.readline()                  #this is where you grab the first line of next chromosome 
+        line_2_write = file.readline()                  #this is where you grab the second line of new chromosome 
         line = line_2_write.strip().split()
-        current_chrom = line[2]     #assign new chromosome for line comparisons
-        split_header = line[0].split(":")
-        current_read_umi = split_header[7]      #assign umi for next line
-        if current_read_umi in my_UMIs:         #check if umi is known
-            out.write(line_2_write)             #write out as first line should not be duplicate
-            read_strand = bitwise_strand(line[1])   #assign strandedness
-            start_pos = adjust_5_position(line)     #assign adjusted position
-            compare_list=current_read_umi + read_strand + start_pos #combine as values to add to comparison dictionary
-            compare_reads[compare_list]= 0          #assign variable to dictionary
-        else:
-            err.write(line_2_write)                 #if not known, write to error-unknown file
+        # current_chrom = line[2]     #assign new chromosome for line comparisons
+        if current_chrom == line[2]:              #if chromosome is the same, we need to compare to previous
+            split_header = line[0].split(":")
+            current_read_umi = split_header[7]      #assign umi for next line
+            if current_read_umi in my_UMIs:
+                strand = bitwise_strand(line[1])
+                five_start = adjust_5_position(line)
+                comparison = current_read_umi + strand + five_start
+                if comparison in compare_reads:
+                    dupe.write(line_2_write)
+                    compare_reads[comparison]+=1
+                else:
+                    out.write(line_2_write)
+                    compare_reads[comparison]=0
+            else:
+                err.write(line_2_write)
+        else: # current_chrom != line[2]: #this line is new chromosome first line, so add to dictionary three values = 0 and move on   #so we want to write it out
+            current_chrom = line[2]
+            compare_reads={}
+            split_header = line[0].split(":")
+            current_read_umi = split_header[7]      #assign umi for next line
+            if current_read_umi in my_UMIs:         #check if umi is known
+                out.write(line_2_write)             #write out as first line should not be duplicate
+                read_strand = bitwise_strand(line[1])   #assign strandedness
+                start_pos = adjust_5_position(line)     #assign adjusted position
+                compare_list=current_read_umi + read_strand + start_pos #combine as values to add to comparison dictionary
+                compare_reads[compare_list]= 0          #assign variable to dictionary
+            else:
+                err.write(line_2_write)                 #if not known, write to error-unknown file
     else:       #new line chromosome = current_chrom
         compare_split_header_umi = compare[0].split(":")
         compare_read_umi = compare_split_header_umi[7]  #assign umi
