@@ -6,18 +6,17 @@ import re
 def get_args():
     parser = argparse.ArgumentParser(description="A program for PS6")
     parser.add_argument("-f", "--filename", help="filename", required=True, type=str)
-    parser.add_argument("-o", "--outfile", help="output file name", required= True, type=str)
+    parser.add_argument("-o", "--outfile", help="output file name that ends in _unique.sam", required= True, type=str)
     parser.add_argument("-u", "--umi", help="designates file containing the list of known UMIs", required= True, type=str)
-    parser.add_argument("-d", "--dupes", help="file to create which holds non-unique reads aka duplicates", type = str)
-    parser.add_argument("-e", "--extra", help="file to create which holds reads that have erros in UMI or are not known UMIs", type=str)
+    
     return parser.parse_args()
 
 args=get_args()
 filename=args.filename
-outfile=args.outfile
+outfile=args.outfile        #be sure to input a filename that ends in "_unique.sam" to have output files named properly
 umi=args.umi
-dupe=args.dupes
-erunk=args.extra
+dupe=f"{outfile[:-11]}.duplicates"
+erunk=f"{outfile[:-11]}.erunk"
 
 def Umi_list (filein: str) -> set[str]:
     '''This will read a file that contains only lines, where each line is a unique, known UMI for our deduping process'''
